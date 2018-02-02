@@ -1,110 +1,445 @@
-library(shiny)
-# use the below options code if you wish to increase the file input limit, in this example file input limit is increased from 5MB to 9MB
-# options(shiny.maxRequestSize = 9*1024^2)
+
+if(!require(openxlsx)) {
+  install.packages("openxlsx", repos="http://cran.us.r-project.org")
+  require(openxlsx)
+}
+# dbscan for the clustering
+if(!require(dbscan)) {
+  install.packages("dbscan", repos="http://cran.us.r-project.org")
+  require(dbscan)
+}
+# shiny to build the app
+if(!require(shiny)) {
+  install.packages("shiny", repos="http://cran.us.r-project.org")
+  require(shiny)
+}
+if(!require(DT)) {
+  install.packages("DT", repos="http://cran.us.r-project.org")
+  require(DT)
+}
+
+if(!require(readxl)) {
+  install.packages("readxl", repos="http://cran.us.r-project.org")
+  require(readxl)
+} 
+
+if(!require(shinyRGL)) {
+  install.packages("shinyRGL", repos="http://cran.us.r-project.org")
+  require(shinyRGL)
+} 
+
+if(!require(rgl)) {
+  install.packages("rgl", repos="http://cran.us.r-project.org")
+  require(rgl)
+} 
+
+if(!require(rglwidget)) {
+  install.packages("rglwidget", repos="http://cran.us.r-project.org")
+  require(rglwidget)
+} 
+
+
 
 shinyServer(function(input,output){
   
-  # This reactive function will take the inputs from UI.R and use them for read.table() to read the data from the file. It returns the dataset in the form of a dataframe.
-  # file$datapath -> gives the path of the file
-  #data <- reactive({
-    #file<-read.csv(file.choose(), header=T)
-   # file1 <- input$file
-    #if(is.null(file1)){return()} 
-    #read.table(file=file1$datapath, sep=input$sep, header = input$header, stringsAsFactors = input$stringAsFactors)
-    #})
+  data <- reactive({
+    file1 <- input$file
+    
+    
+    # Determine document format; 
+    #ptn <- "\\.[[:alnum:]]{1,5}$" 
+    #suf <- tolower(regmatches(file1$name, regexpr(ptn, file1$name))) 
+    
+    #if no argument 
+    if(is.null(input$file)){return()}
+    file.rename(file1$datapath,paste(file1$datapath,".xlsx", sep=""))
+    # Options for Excel documents; 
+    # if (suf %in% c('.xls', '.xlsx')) { 
+    #  if( is.null(file1)){return()}
+    #read.xlsx(file1$datapath, 1)
+    #read.xlsx(file1$datapath, sheet = 1, colNames = TRUE)
+    read_excel(paste(file1$datapath,".xlsx",sep=""))
+    #read.big.matrix(file1$datapath,".xlsx",sep="")
+    #}
+    # else{
+    # read.table(file = file1$datapath, sep = input$sep, header = input$header, stringsAsFactors = input$stringAsFactors)
+    # }
+  })
   
-  #x <- reactive({
-   # file2 <- input$file
-    #file22<-as.matrix(file2)
-    #if(is.null(file1)){return()} 
-    #read.table(file=file22$datapath, sep=input$sep, header = input$header, stringsAsFactors = input$stringAsFactors)
-  #})
-  
-  #merged <- reactive({
-    #file3 <- input$file
-    #if(is.null(file3)){return()} 
-   # read.table(file=file3$datapath, sep=input$sep, header = input$header, stringsAsFactors = input$stringAsFactors)
- # })
-  
-  
-  # this reactive output contains the summary of the dataset and display the summary in table format
   output$filedf <- renderTable({
-    if(is.null(data())){return ()}
+    if(is.null(data())){return()}
     input$file
   })
   
-  # this reactive output contains the summary of the dataset and display the summary in table format
-  output$sum <- renderTable({
-    if(is.null(data())){return ()}
-    summary(data())
-    
+  output$sum <- DT::renderDataTable({
+    if(is.null(data())){return()}
+    datatable(summary(data()))
   })
   
-  # This reactive output contains the dataset and display the dataset in table format
-  output$table <- renderTable({
-    if(is.null(data())){return ()}
-    data()
+  output$table <- DT::renderDataTable({
+    if(is.null(data())){return()}
+    datatable(data())
   })
   
-  #merged<-data
-  #x<-as.matrix(data)
-  
-  #output$fcluster <- renderDataTable({
-   # if(is.null(data())){return ()}
-    library(dbscan)
-    x<-as.matrix(data())
-    merged<-data
-    q<-1
+  output$cluster <- DT::renderDataTable({
+    if(is.null(data())){return()}
     
-    classified <- data.frame(matrix(NA, nrow=2, ncol=0))
-    rownames(classified) <- c("Wood","Non-Wood")
+    x <-as.matrix(data())
+    merged <<-data()
+    q <- 1
     
-    for(i in .1:.2)
+    
+    
+    for(i in input$eps[1]:input$eps[2])
     {
-      for(j in .1:.2)
+      
+      for(j in input$pts[1]:input$pts[2])
       {
+        
+        
+        db <- dbscan(x, eps = i , minPts = j)
+        
+        
+        merged[q+3] <<- db$cluster
+        names(merged)[q+3] <<- print(paste0("Eps ",i," MinPts ",j))
+        q <- q+1
+        
+      }
+      
+    }
+    datatable(merged)
+    
+  })
+  
+  output$class <- DT::renderDataTable({
+    if(is.null(data())){return()}
+    
+    x <-as.matrix(data())
+    q <- 1
+    
+    classified <<- data.frame(matrix(NA, nrow=3, ncol=0))
+    rownames(classified) <<- c("Wood","Non-Wood","Total No. of Clusters")
+    
+    for(i in input$eps[1]:input$eps[2])
+    {
+      
+      for(j in input$pts[1]:input$pts[2])
+      {
+        
+        
         db <- dbscan(x, eps = i , minPts = j)
         
         temp<- as.data.frame(table(db$cluster))
-        if(temp[1,1] == 0)
-        {
+        
+        noise <- 0
+        
+        if(temp[1,1]==0){
+          
+          noise <- as.numeric(temp[1,2])
+          
           temp = temp[-1,]
         }
         
         
+        
         wood <- max(temp[2])
-        nonwood <- sum(temp[2]) - max(temp[2])
+        nonwood <- (sum(temp[2]) - max(temp[2])) + noise 
         
         
-        classified[1,q] <- wood
-        classified[2,q] <- nonwood
-        names(classified)[q] <- print(paste0("Eps ",i," MinPts ",j))
+        classified[1,q] <<- wood
+        classified[2,q] <<- nonwood
+        classified[3,q] <<- wood+nonwood
+        names(classified)[q] <<- print(paste0("Eps ",i," MinPts ",j))
+        q <- q+1
         
-        merged[q+3] <- db$cluster
-        names(merged)[q+3] <- print(paste0("Eps ",i," MinPts ",j))
-        q <- q+.1
+      }
+      
+    }
+    datatable(classified)
+  })
+  
+  output$sort <- DT::renderDataTable({
+    if(is.null(data())){return()}
+    
+    x <-as.matrix(data())
+    q <- 1
+    
+    first <- NULL
+    second <- NULL
+    third <- NULL
+    fourth <- NULL
+    fifth <- NULL
+    sixth <- NULL
+    seventh <- NULL
+    eighth <- NULL
+    ninth <- NULL
+    tenth <- NULL
+    
+    sorted <<- data.frame(matrix(NA, nrow=10, ncol=0))
+    rownames(sorted) <<- c("Most freq. cluster","2nd freq.","3rd freq.","4th freq.","5th freq.","6th freq.","7th freq.","8th freq.","9th freq.","10th freq.")
+    
+    for(i in input$eps[1]:input$eps[2])
+    {
+      
+      for(j in input$pts[1]:input$pts[2])
+      {
+        
+        
+        db <- dbscan(x, eps = i , minPts = j)
+        
+        temp<- as.data.frame(table(db$cluster))
+        
+        
+        temp <- temp[rev(order(temp$Freq)),]
+        
+        
+        first <- temp$Var1[1]
+        second <- temp$Var1[2]
+        third <- temp$Var1[3]
+        fourth <- temp$Var1[4]
+        fifth <- temp$Var1[5]
+        sixth <- temp$Var1[6]
+        seventh <- temp$Var1[7]
+        eighth <- temp$Var1[8]
+        ninth <- temp$Var1[9]
+        tenth <- temp$Var1[10]
+        
+        sorted[1,q] <<- first
+        sorted[2,q] <<- second
+        sorted[3,q] <<- third
+        sorted[4,q] <<- fourth
+        sorted[5,q] <<- fifth
+        sorted[6,q] <<- sixth
+        sorted[7,q] <<- seventh
+        sorted[8,q] <<- eighth
+        sorted[9,q] <<- ninth
+        sorted[10,q] <<- tenth
+        
+        names(sorted)[q] <<- print(paste0("Eps ",i," MinPts ",j))
+        q <- q+1
+        
       }
     }
-    output$fcluster <- renderDataTable(merged)
-    #output$table1 <- renderDataTable(merged)
-    #table
-    #dataTableOutput(merged)
-    #data()
-    #server = function(input, output) {
-      #output$table <- renderDataTable(merged)
-    #}
-   # tableOutput(merged)
-  #}
-  #)
+    
+    datatable(sorted)  
+    
+  })
+  
+  output$downloadData <- downloadHandler(
+    
+    filename = function() { paste("classification_result", "xlsx", sep='.') },
+    content = function(file){
+      if(is.null(data())){return()}
+      
+      x <-as.matrix(data())
+      q <- 1
+      
+      classified <<- data.frame(matrix(NA, nrow=3, ncol=0))
+      rownames(classified) <<- c("Wood","Non-Wood","Total No. of Clusters")
+      
+      for(i in input$eps[1]:input$eps[2])
+      {
+        
+        for(j in input$pts[1]:input$pts[2])
+        {
+          
+          
+          db <- dbscan(x, eps = i , minPts = j)
+          
+          temp<- as.data.frame(table(db$cluster))
+          
+          noise <- 0
+          
+          if(temp[1,1]==0){
+            
+            noise <- as.numeric(temp[1,2])
+            
+            temp = temp[-1,]
+          }
+          
+          
+          
+          wood <- max(temp[2])
+          nonwood <- (sum(temp[2]) - max(temp[2])) + noise 
+          
+          
+          classified[1,q] <<- wood
+          classified[2,q] <<- nonwood
+          classified[3,q] <<- wood+nonwood
+          names(classified)[q] <<- print(paste0("Eps ",i," MinPts ",j))
+          q <- q+1
+          
+        }
+        
+      }
+      fname <- paste(file,"xlsx",sep=".")
+      wb <- createWorkbook()
+      print(class(classified))
+      addWorksheet(wb = wb, sheetName = "Sheet 1", gridLines = FALSE)
+      writeDataTable(wb = wb, sheet = 1,rowNames = TRUE, x = classified)
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
+  )
+  output$downloadData2 <- downloadHandler(
+    filename = function() { paste("cluster_result", "xlsx", sep='.') },
+    content = function(file){
+      if(is.null(data())){return()}
+      
+      x <-as.matrix(data())
+      merged <<-data()
+      q <- 1
+      
+      
+      
+      for(i in input$eps[1]:input$eps[2])
+      {
+        
+        for(j in input$pts[1]:input$pts[2])
+        {
+          
+          
+          db <- dbscan(x, eps = i , minPts = j)
+          
+          
+          merged[q+3] <<- db$cluster
+          names(merged)[q+3] <<- print(paste0("Eps ",i," MinPts ",j))
+          q <- q+1
+          
+        }
+        
+      }
+      fname <- paste(file,"xlsx",sep=".")
+      wb <- createWorkbook()
+      print(class(merged))
+      addWorksheet(wb = wb, sheetName = "Sheet 1", gridLines = FALSE)
+      writeDataTable(wb = wb, sheet = 1, x = merged)
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
+  )
+  
+  output$plot3d <- renderRglwidget({ 
+    try(rgl.close())
+   # topcluster = names(which.max(sorted[1,]))
+   # db_filtered = merged[merged$topcluster == sorted[1,topcluster],]
+    points3d(merged[,1],
+             merged[,2],
+             merged[,3], col = 'green')
+    axes3d()
+    rglwidget()
+  })
+  
+  output$plot3d2 <- renderRglwidget({ 
+    try(rgl.close())
+    
+   # eps <- eventReactive(input$gButton, {
+  #    eps1 <- input$eps
+   # })
+    
+   # minPts <- eventReactive(input$gButton, {input$pts} )
+    e <- as.numeric(input$eps1)
+    m <- as.numeric(input$pts1)
+    
+    
+    x <-as.matrix(data())
+    db <- dbscan(x, eps = e , minPts = m)
+    
+    temp<- as.data.frame(table(db$cluster))
+    
+    
+    temp <- temp[rev(order(temp$Freq)),]
+    
+    
+    first <- temp$Var1[1]
+    
+    
+    # topcluster = names(which.max(sorted[1,]))
+    
+    db_filtered = merged[merged$`Eps 1 MinPts 3`== first ,e:m]
+    points3d(db_filtered[,1],
+             db_filtered[,2],
+             db_filtered[,3] )
+    axes3d()
+    rglwidget()
+  })
   
   
+  output$downloadData3 <- downloadHandler(
+    filename = function() { paste("top10_cluster", "xlsx", sep='.') },
+    content = function(file){
+      if(is.null(data())){return()}
+      
+      x <-as.matrix(data())
+      q <- 1
+      
+      first <- NULL
+      second <- NULL
+      third <- NULL
+      fourth <- NULL
+      fifth <- NULL
+      sixth <- NULL
+      seventh <- NULL
+      eighth <- NULL
+      ninth <- NULL
+      tenth <- NULL
+      
+      sorted <<- data.frame(matrix(NA, nrow=10, ncol=0))
+      rownames(sorted) <<- c("Most freq. cluster","2nd freq.","3rd freq.","4th freq.","5th freq.","6th freq.","7th freq.","8th freq.","9th freq.","10th freq.")
+      
+      for(i in input$eps[1]:input$eps[2])
+      {
+        
+        for(j in input$pts[1]:input$pts[2])
+        {
+          
+          
+          db <- dbscan(x, eps = i , minPts = j)
+          
+          temp<- as.data.frame(table(db$cluster))
+          
+          
+          temp <- temp[rev(order(temp$Freq)),]
+          
+          
+          first <- temp$Var1[1]
+          second <- temp$Var1[2]
+          third <- temp$Var1[3]
+          fourth <- temp$Var1[4]
+          fifth <- temp$Var1[5]
+          sixth <- temp$Var1[6]
+          seventh <- temp$Var1[7]
+          eighth <- temp$Var1[8]
+          ninth <- temp$Var1[9]
+          tenth <- temp$Var1[10]
+          
+          sorted[1,q] <<- first
+          sorted[2,q] <<- second
+          sorted[3,q] <<- third
+          sorted[4,q] <<- fourth
+          sorted[5,q] <<- fifth
+          sorted[6,q] <<- sixth
+          sorted[7,q] <<- seventh
+          sorted[8,q] <<- eighth
+          sorted[9,q] <<- ninth
+          sorted[10,q] <<- tenth
+          
+          names(sorted)[q] <<- print(paste0("Eps ",i," MinPts ",j))
+          q <- q+1
+          
+        }
+      }
+      fname <- paste(file,"xlsx",sep=".")
+      wb <- createWorkbook()
+      print(class(sorted))
+      addWorksheet(wb = wb, sheetName = "Sheet 1", gridLines = FALSE)
+      writeDataTable(wb = wb, sheet = 1,rowNames = TRUE, x = sorted)
+      saveWorkbook(wb, file, overwrite = TRUE)
+    }
+  )
   
-  
-  # the following renderUI is used to dynamically generate the tabsets when the file is loaded. Until the file is loaded, app will not show the tabset.
   output$tb <- renderUI({
     if(is.null(data()))
       ""
     else
-      tabsetPanel(tabPanel("About file", tableOutput("filedf")),tabPanel("Data", tableOutput("table")),tabPanel("Summary", tableOutput("sum")))
+      tabsetPanel(tabPanel("About file", tableOutput("filedf")),tabPanel("Data", dataTableOutput("table")),tabPanel("Summary", dataTableOutput("sum")),tabPanel("Cluster",dataTableOutput("cluster")),tabPanel("Classification",dataTableOutput("class")),tabPanel("Top 10 Clusters",dataTableOutput("sort")),tabPanel("3D Plot",rglwidgetOutput('plot3d')),tabPanel("Wood Only 3D",rglwidgetOutput('plot3d2')))
   })
 })
